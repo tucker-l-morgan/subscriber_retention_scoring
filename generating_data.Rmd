@@ -1,0 +1,63 @@
+---
+title: "Generating Subscriber Data"
+author: "Tucker Morgan"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+## Introduction
+
+In this project, I'll be showing a few ways to train a subscriber retention scoring model; the goal of this model will be to take historical subscriber-level data points as input and predict the likelihood of subscription renewal in the next subscription period. For this project, let's consider YouTube Premium, [which passed 100M subscribers in 2024](https://blog.youtube/news-and-events/youtube-music-premium-100-million-subscribers/), as our subscription service.
+
+First, we will need some data... and since data on YouTube Premium subscriptions is publicly available, we will use this document to generate synthetic data for model training. This isn't ideal, but the focus of this project is to walk through the model training process not to draw conclusions about Google's business as it relates to YouTube Premium. To generate synthetic data, we will use a handful of assumed distributions for various user-level metrics, and we will need to provide some true relationship, $f$, between our generated metrics and our outcome of interest.
+
+## Generating Metrics
+
+While there are over 100M subscribers to YouTube Premium, in an effort to reduce the overhead of this task and to make the size of data more manageable on local machines, let's start with 2M subscribers. And we will start the following metrics:
+
+* `subscription_tenure` - the number of consecutive subscription periods, call it a month, for which this customer has been a subscriber
+* `total_user_sessions` - the total number of distinct sessions a user had in the most recent month
+* `total_duration_min` - the total duration of a user's sessions in the most recent month (in minutes)
+* `total_watch_duration_mins` - the total duration of a user's watch time in the period (in minutes)
+* `total_videos_watched` - the total number of videos watched by a user in the most recent month (not unique videos)
+* `num_user_subscriptions` - the total number of channels to which the user is subscribed
+* `num_liked_videos` - the total number of videos that a user "liked" in the period
+* `num_comments` - the total number of comments a user posted in the period
+* `youtube_tv_subscriber` - an indicator for if someone has YouTube Premium as part of their YouTube TV subscription
+
+In actual applications, we will likely be building off of a database with much more granular data that we would roll-up to the user x subscription period level. I might show how to do this later, but it can vary based on how a customer database is set up.
+```{r generating subscribers}
+set.seed(100)
+subscriber_df <- 
+  tibble(
+    user_id = seq(from = 1000001, to = 3000000)
+  ) %>% 
+  # for subscription tenure, we will assume a normal distribution with mean 12 months; sd of 8 months
+  # however, we want the distribution truncated to be above 0 and below 72 (6 years), so it ends up looking not exactly normal
+  add_column(
+    subscription_tenure = ceiling(msm::rtnorm(nrow(.), mean = 12, sd = 8, lower = .01, upper = 72)),
+    # we'll generate total user sessions such that they are independent of subscription tenure
+    total_user_sessions = ceiling(msm::rtnorm(nrow(.), mean = 40, sd = 20, lower = -1, upper = 72))
+    ) %>% 
+  # now, we'll generate some user engagement metrics as functions of the above
+  mutate(
+    total_duration_min = total_user_sessions * abs(rnorm(nrow(.), mean = 2, sd = 10)),
+    total_watch_duration_min = total_duration_min * runif(nrow(.), min = 0.6, max = 0.95),
+    total_videos_watched = total_watch_duration_min / abs(rnorm(nrow(.), mean = 3, sd = 10)),
+    # here we calculate the percentile of each user based on total user sessions; we then use that value to generate a number of subscriptions
+    percentile = percent_rank(total_user_sessions),
+    num_user_subscriptions = floor(abs((percentile * 100) + runif(nrow(.), min = -20, max = 0))),
+    # and we'll make the number of likes and comments a function of user subscriptions
+    num_liked_videos = ceiling(runif(nrow(.), min = 0, max = 1) * total_videos_watched),
+    num_comments = round(rexp(nrow(.), rate = 2)) * num_user_subscriptions,
+    # and now, i'll just make youtube TV subscriber a weighted coin flip with ~ 40% being YouTube TV
+    youtube_tv_subscriber = rbinom(nrow(.), size = 1, prob = 0.3878)
+  )
+
+skimr::skim(subscriber_df)
+```
