@@ -12,7 +12,7 @@ library(tidyverse)
 
 ## Introduction
 
-In this project, I'll be showing a few ways to train a subscriber retention scoring model; the goal of this model will be to take historical subscriber-level data points as input and predict the likelihood of subscription renewal in the next subscription period. For this project, let's consider YouTube Premium, [which passed 100M subscribers in 2024](https://blog.youtube/news-and-events/youtube-music-premium-100-million-subscribers/), as our subscription service.
+In this project, I'll be showing a few ways to train a subscriber retention scoring model; the goal of this model will be to take historical subscriber-level data points as input and predict the likelihood of subscription renewal in the next subscription period. For this project, let's consider YouTube Premium, [which passed 125M subscribers in 2025](https://variety.com/2025/digital/news/youtube-125-million-music-premium-subscribers-lite-tier-1236328177/), as our subscription service.
 
 First, we will need some data... and since data on YouTube Premium subscriptions is publicly available, we will use this document to generate synthetic data for model training. This isn't ideal, but the focus of this project is to walk through the model training process not to draw conclusions about Google's business as it relates to YouTube Premium. To generate synthetic data, we will use a handful of assumed distributions for various user-level metrics, and we will need to provide some true relationship, $f$, between our generated metrics and our outcome of interest.
 
@@ -61,3 +61,61 @@ subscriber_df <-
 
 skimr::skim(subscriber_df)
 ```
+
+And now, we need to generate our outcomes. We could randomly generate them, but I'd like to have some level of structure to outcomes so we have something to work toward.
+
+```{r generating outcomes}
+# this is setting our intercept,
+# such that anyone with zero for all inputs has a 20% probability of renewing
+p_0 <- 0.2
+b_0 <- log(p_0/(1-p_0))
+# we will now set the coefficients for four variables
+# b_1 for subscription tenure
+# b_2 for total videos watched
+# b_3 for number of user subscriptions
+# and b_4 for number of liked videos
+# we'll see how our statistical learning methods do in identifying these variables
+or_1 <- 1.102 # setting the odds ratio; each additional month of tenure increases the likelihood of renewing
+b_1 <- log(or_1)
+or_2 <- 1.0035 # same for total videos watched but 1 video < 1 month
+b_2 <- log(or_2)
+or_3 <- 1.003 # 1 subscription is slightly less influential than 1 video watched
+b_3 <- log(or_3)
+or_4 <- 1.0045 # 1 video liked is more influential than 1 video watched
+b_4 <- log(or_4)
+
+subscriber_df_outcomes <- 
+  subscriber_df %>% 
+  mutate(renew_prob = 1/(1+exp(-(b_0 + b_1 * subscription_tenure + b_2 * total_videos_watched + 
+                                   b_3 * num_user_subscriptions + b_4 * num_liked_videos))),
+         renew_flag = ifelse(renew_prob >= 0.5, TRUE, FALSE))
+```
+
+Let's see what our outcomes end up looking like.
+
+```{r summary of outcomes}
+ggplot(subscriber_df_outcomes,
+       aes(x = renew_prob)) +
+  geom_histogram(bins = 10, fill = 'cornflowerblue', alpha = 0.6, color = 'black') +
+  labs(title = 'Distribution of Renewal Probabilities', x = 'Renewal Probability', y = 'Count') +
+  theme_minimal()
+
+subscriber_df_outcomes %>%
+  group_by(renew_flag) %>% 
+  summarise(n_perc = n()/nrow(.)) %>% 
+  mutate(n_perc = round(n_perc, 2)) %>% 
+  knitr::kable()
+```
+
+The `renewal_flag` field is what we'll use in our analysis, and we can see that 65% of users renew. While this may not be true to real data, this will give us a fairly balanced population of outcomes. So let's remove a couple of fields and write this to a csv.
+
+```{r writing output}
+export_df <- 
+  subscriber_df_outcomes %>% 
+  select(-percentile, -renew_prob)
+
+# i'll use an rds file to save a little storage space
+save(export_df, file = './subscribers.Rds')
+#write_csv(export_df, './subscribers.csv')
+```
+
