@@ -18,7 +18,7 @@ First, we will need some data... and since data on YouTube Premium subscriptions
 
 ## Generating Metrics
 
-While there are over 100M subscribers to YouTube Premium, in an effort to reduce the overhead of this task and to make the size of data more manageable on local machines, let's start with 2M subscribers. And we will start the following metrics:
+While there are over 125M subscribers to YouTube Premium, in an effort to reduce the overhead of this task and to make the size of data more manageable on local machines, let's start with 1.5M subscribers. And we will start the following metrics:
 
 * `subscription_tenure` - the number of consecutive subscription periods, call it a month, for which this customer has been a subscriber
 * `total_user_sessions` - the total number of distinct sessions a user had in the most recent month
@@ -35,7 +35,7 @@ In actual applications, we will likely be building off of a database with much m
 set.seed(100)
 subscriber_df <- 
   tibble(
-    user_id = seq(from = 1000001, to = 3000000)
+    user_id = seq(from = 1000001, to = 2500000)
   ) %>% 
   # for subscription tenure, we will assume a normal distribution with mean 12 months; sd of 8 months
   # however, we want the distribution truncated to be above 0 and below 72 (6 years), so it ends up looking not exactly normal
@@ -107,7 +107,7 @@ subscriber_df_outcomes %>%
   knitr::kable()
 ```
 
-The `renewal_flag` field is what we'll use in our analysis, and we can see that 65% of users renew. While this may not be true to real data, this will give us a fairly balanced population of outcomes. So let's remove a couple of fields and write this to a csv.
+The `renewal_flag` field is what we'll use in our analysis, and we can see that 65% of users renew. While this may not be true to real data, this will give us a fairly balanced population of outcomes. So let's remove a couple of fields and write this to a file.
 
 ```{r writing output}
 export_df <- 
